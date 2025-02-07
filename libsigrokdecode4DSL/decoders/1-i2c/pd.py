@@ -84,7 +84,7 @@ class Decoder(srd.Decoder):
         {'id': 'address_format', 'desc': 'Displayed slave address format',
             'default': 'unshifted', 'values': ('shifted', 'unshifted'), 'idn':'dec_1i2c_opt_addr'},
         {'id': 'glitch_filter', 'desc': 'Glitch Filter (ns)',
-            'default': 0, 'idn':'dec_1i2c_alt_opt_gf'},
+            'default': 0, 'idn':'dec_1i2c_opt_gf'},
     )
     annotations = (
         ('7', 'start', 'Start condition'),

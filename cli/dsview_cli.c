@@ -36,7 +36,7 @@
  * Constants
  * ------------------------------------------------------------------------- */
 
-#define MAX_CH 16
+#define MAX_CH 32
 
 /* -------------------------------------------------------------------------
  * Global capture state
@@ -57,7 +57,7 @@ static int g_hw_nch = 0;	/* hw mode channel count (FPGA data packing) */
  * USB transfers and receive_transfer() truncation can deliver data
  * that is not a whole multiple of nch*8 bytes (one cross-format group).
  * We buffer partial groups here and prepend them to the next callback. */
-static uint8_t g_cross_leftover[MAX_CH * 8]; /* max group = 16 * 8 = 128 */
+static uint8_t g_cross_leftover[MAX_CH * 8]; /* max group = 32 * 8 = 256 */
 static size_t g_cross_leftover_len = 0;
 
 /* -------------------------------------------------------------------------
@@ -121,7 +121,7 @@ static void event_callback(int event)
 static void convert_one_group(const uint8_t *gp, int nch, int unitsize,
 			      FILE *fp, uint64_t *written)
 {
-	uint8_t out[64 * 2]; /* max unitsize=2, 64 samples per group */
+	uint8_t out[64 * 4]; /* max unitsize=4 (32 channels), 64 samples per group */
 
 	memset(out, 0, (size_t)(64 * unitsize));
 
@@ -799,6 +799,38 @@ static int cmd_capture(int dev_index, uint64_t samplerate, uint64_t limit_sample
 	g_dev_mode = ds_get_actived_device_mode();
 	int is_dso = (g_dev_mode == DSO || g_dev_mode == ANALOG);
 
+	/* Drop requested channels beyond the device's real channel count.
+	 * The default channel list is 0..MAX_CH-1 (32 wide); on narrower
+	 * devices the hw-mode selection below would find no mode covering
+	 * them and the FPGA packing would not match cross_to_parallel(). */
+	if (!is_dso) {
+		struct ds_device_full_info dinfo;
+		memset(&dinfo, 0, sizeof(dinfo));
+		ds_get_actived_device_info(&dinfo);
+		int dev_nch = dinfo.di ? (int)g_slist_length(dinfo.di->channels) : 0;
+		if (dev_nch > 0) {
+			int kept = 0, dropped = 0;
+			for (int i = 0; i < g_n_enabled_chs; i++) {
+				if (g_enabled_chs[i] < dev_nch) {
+					if (kept != i) {
+						g_enabled_chs[kept] = g_enabled_chs[i];
+						memcpy(g_ch_names[kept], g_ch_names[i],
+						       sizeof(g_ch_names[0]));
+					}
+					kept++;
+				} else {
+					dropped++;
+				}
+			}
+			if (dropped > 0 && kept > 0) {
+				fprintf(stderr,
+					"Warning: dropped %d channel(s) not present on this %d-channel device\n",
+					dropped, dev_nch);
+				g_n_enabled_chs = kept;
+			}
+		}
+	}
+
 	/* LOGIC mode: select the best hardware channel mode for the number
 	 * of requested channels.  The DSLogic FPGA must be told which
 	 * channel mode to use -- simply enabling/disabling individual
@@ -877,8 +909,12 @@ static int cmd_capture(int dev_index, uint64_t samplerate, uint64_t limit_sample
 	 * LOGIC = use the hw channel mode's channel count for unitsize */
 	if (is_dso)
 		g_unitsize = 1;	/* 8-bit ADC, 1 byte per channel per sample */
+	else if (g_hw_nch <= 8)
+		g_unitsize = 1;
+	else if (g_hw_nch <= 16)
+		g_unitsize = 2;
 	else
-		g_unitsize = (g_hw_nch <= 8) ? 1 : 2;
+		g_unitsize = 4;	/* 32-channel devices (e.g. U3Pro32) */
 
 	/* Samplerate -- sr_config_set() takes ownership of the GVariant
 	 * (ref_sink + unref), so we must NOT unref after the call. */

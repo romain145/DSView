@@ -58,6 +58,13 @@ else:
     if CLI_BINARY is None:
         CLI_BINARY = _CLI_CANDIDATES[0]  # default for error messages
 
+def _sample_val(raw: bytes, off: int, unitsize: int) -> int:
+    """Read one little-endian sample word of `unitsize` bytes (1, 2 or 4)."""
+    if unitsize == 1:
+        return raw[off]
+    return int.from_bytes(raw[off:off + unitsize], "little")
+
+
 mcp = FastMCP(
     "dsview",
     instructions=(
@@ -517,8 +524,7 @@ def _write_vcd(bin_path: str, out_path: str, meta: dict) -> None:
             prev = {}
             for s in range(n_samples):
                 off = s * unitsize
-                val = raw[off] if unitsize == 1 else struct.unpack_from("<H", raw, off)[
-                    0]
+                val = _sample_val(raw, off, unitsize)
                 changes = []
                 for ident, bit, _ in entries:
                     b = (val >> bit) & 1
@@ -571,8 +577,7 @@ def _write_csv_logic(raw: bytes, out_path: str, ch_map: list,
         f.write(",".join(names) + "\n")
         for s in range(n_samples):
             off = s * unitsize
-            val = raw[off] if unitsize == 1 else struct.unpack_from("<H", raw, off)[
-                0]
+            val = _sample_val(raw, off, unitsize)
             f.write(",".join(str((val >> b) & 1) for b in bits) + "\n")
 
 
@@ -940,8 +945,7 @@ def capture_logic(
             preview = []
             for i in range(n_got):
                 off = i * unitsize
-                val = raw[off] if unitsize == 1 else struct.unpack_from("<H", raw, off)[
-                    0]
+                val = _sample_val(raw, off, unitsize)
                 row = {}
                 for entry in ch_map:
                     bit = entry.get("phys", entry.get("seq", 0))
@@ -1520,7 +1524,7 @@ def decode_capture(
                 samplerate, n_ch_hdr = struct.unpack("<QI", hdr)
                 ch_map = [{"seq": i, "phys": i, "name": "CH%d" % i}
                           for i in range(n_ch_hdr)]
-                unitsize = 2 if n_ch_hdr > 8 else 1
+                unitsize = 4 if n_ch_hdr > 16 else (2 if n_ch_hdr > 8 else 1)
         except Exception:
             pass
 
@@ -1550,8 +1554,7 @@ def decode_capture(
     timestamps_ns = []
     for i in range(n_got):
         off = i * unitsize
-        val = raw[off] if unitsize == 1 else struct.unpack_from("<H", raw, off)[
-            0]
+        val = _sample_val(raw, off, unitsize)
         timestamps_ns.append((start_sample + i) * sample_period_ns)
         for label, bit in labels.items():
             signals[label].append((val >> bit) & 1)
@@ -1630,7 +1633,7 @@ def signal_summary(file_path: str) -> str:
                 samplerate, n_ch_hdr = struct.unpack("<QI", hdr)
                 ch_map = [{"seq": i, "phys": i, "name": "CH%d" % i}
                           for i in range(n_ch_hdr)]
-                unitsize = 2 if n_ch_hdr > 8 else 1
+                unitsize = 4 if n_ch_hdr > 16 else (2 if n_ch_hdr > 8 else 1)
         except Exception:
             pass
 
@@ -1666,8 +1669,7 @@ def signal_summary(file_path: str) -> str:
 
     for i in range(n_samples):
         off = i * unitsize
-        val = raw[off] if unitsize == 1 else struct.unpack_from("<H", raw, off)[
-            0]
+        val = _sample_val(raw, off, unitsize)
         for label, bit in labels.items():
             b = (val >> bit) & 1
             high_count[label] += b

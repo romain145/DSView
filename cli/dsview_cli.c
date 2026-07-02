@@ -1417,6 +1417,14 @@ int main(int argc, char **argv)
 		}
 	}
 
+	/* Normalize path separators: the path is echoed verbatim inside the
+	 * JSON result, where a raw backslash is an invalid escape sequence.
+	 * Win32 APIs accept forward slashes. */
+	for (char *p = outfile; *p; p++) {
+		if (*p == '\\')
+			*p = '/';
+	}
+
 	if (!strcmp(cmd, "scan")) {
 		return cmd_scan();
 	} else if (!strcmp(cmd, "info")) {

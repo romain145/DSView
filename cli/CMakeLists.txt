@@ -59,14 +59,35 @@ target_compile_options(dsview-cli PRIVATE
     -Wno-implicit-function-declaration
 )
 
-target_link_libraries(dsview-cli
-    -lz
-    -lglib-2.0
-    -lm
-    ${CMAKE_THREAD_LIBS_INIT}
-    ${LIBUSB_1_LIBRARIES}
-    ${PY_LIB}
-)
+# Optional fully-static link for a portable binary:
+#   cmake .. -DDSVIEW_CLI_STATIC=ON
+# Uses pkg-config --static flags for glib (GLIB_STATIC_LDFLAGS from the
+# parent pkg_search_module) and GLIB_STATIC_COMPILATION to avoid
+# __imp_-decorated (dllimport) references.  ${PY_LIB} is omitted: the
+# cli sources (libsigrok4DSL + common) do not use the Python C API,
+# and MSYS2 ships no static libpython.
+option(DSVIEW_CLI_STATIC "Statically link dsview-cli" OFF)
+
+if(DSVIEW_CLI_STATIC)
+    target_compile_definitions(dsview-cli PRIVATE GLIB_STATIC_COMPILATION)
+    target_link_options(dsview-cli PRIVATE -static -static-libgcc)
+    target_link_libraries(dsview-cli
+        -lz
+        ${GLIB_STATIC_LDFLAGS}
+        -liconv    # needed by libintl.a; missing from glib's static .pc
+        ${CMAKE_THREAD_LIBS_INIT}
+        -lusb-1.0
+    )
+else()
+    target_link_libraries(dsview-cli
+        -lz
+        -lglib-2.0
+        -lm
+        ${CMAKE_THREAD_LIBS_INIT}
+        ${LIBUSB_1_LIBRARIES}
+        ${PY_LIB}
+    )
+endif()
 
 # Place dsview-cli alongside the DSView GUI binary
 set_target_properties(dsview-cli PROPERTIES

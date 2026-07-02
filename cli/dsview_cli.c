@@ -25,6 +25,10 @@
 #include <pthread.h>
 #include <glib.h>
 
+#ifdef _WIN32
+#include <windows.h>
+#endif
+
 #include "libsigrok4DSL/libsigrok.h"
 #include "libsigrok4DSL/libsigrok-internal.h"
 
@@ -278,13 +282,24 @@ static void get_paths(char *fw_dir, size_t fw_sz, char *ud_dir, size_t ud_sz)
 {
 	const char *home = getenv("HOME");
 	if (!home)
-		home = "/tmp";
+		home = g_get_home_dir();
+	if (!home)
+		home = g_get_tmp_dir();
 
 	char exe_path[512];
+#ifdef _WIN32
+	DWORD n = GetModuleFileNameA(NULL, exe_path, sizeof(exe_path) - 1);
+	ssize_t len = (n > 0 && n < sizeof(exe_path)) ? (ssize_t)n : -1;
+#else
 	ssize_t len = readlink("/proc/self/exe", exe_path, sizeof(exe_path) - 1);
+#endif
 	if (len > 0) {
 		exe_path[len] = '\0';
+		/* Find the last directory separator; Windows paths may use both. */
 		char *slash = strrchr(exe_path, '/');
+		char *bslash = strrchr(exe_path, '\\');
+		if (bslash > slash)
+			slash = bslash;
 		if (slash) {
 			*slash = '\0';
 			/* Primary: DSView/res/ relative to the binary's directory.
@@ -1271,7 +1286,9 @@ int main(int argc, char **argv)
 	int dev_index = 0;
 	uint64_t samplerate = 1000000ULL;
 	uint64_t limit_samples = 1000000ULL;
-	char outfile[512] = "/tmp/dsview_capture.bin";
+	char outfile[512];
+	g_snprintf(outfile, sizeof(outfile), "%s%sdsview_capture.bin",
+	           g_get_tmp_dir(), G_DIR_SEPARATOR_S);
 
 	/* Default: all 16 channels */
 	for (int i = 0; i < MAX_CH; i++) {

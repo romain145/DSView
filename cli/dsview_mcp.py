@@ -13,6 +13,7 @@ import math
 import os
 import struct
 import subprocess
+import sys
 import tempfile
 import zipfile
 from pathlib import Path
@@ -33,23 +34,29 @@ SCRIPT_DIR = Path(__file__).parent.resolve()
 DSVIEW_ROOT = SCRIPT_DIR.parent
 
 # Search for the dsview-cli binary in likely build output locations
+_EXE = ".exe" if sys.platform == "win32" else ""
 _CLI_CANDIDATES = [
     # in-tree build (EXECUTABLE_OUTPUT_PATH)
-    DSVIEW_ROOT / "build.dir" / "dsview-cli",
-    DSVIEW_ROOT / "build" / "cli" / "dsview-cli",   # out-of-source: build/cli/
-    DSVIEW_ROOT / "build" / "dsview-cli",            # out-of-source: build/
+    DSVIEW_ROOT / "build.dir" / f"dsview-cli{_EXE}",
+    DSVIEW_ROOT / "build" / "cli" / f"dsview-cli{_EXE}",   # out-of-source: build/cli/
+    DSVIEW_ROOT / "build" / f"dsview-cli{_EXE}",            # out-of-source: build/
     # system install (Debian package)
     Path("/usr/bin/dsview-cli"),
     Path("/usr/local/bin/dsview-cli"),                # local install
 ]
 
-CLI_BINARY = None
-for _candidate in _CLI_CANDIDATES:
-    if _candidate.exists():
-        CLI_BINARY = _candidate
-        break
-if CLI_BINARY is None:
-    CLI_BINARY = _CLI_CANDIDATES[0]  # default for error messages
+# DSVIEW_CLI environment variable overrides the search entirely
+_env_cli = os.environ.get("DSVIEW_CLI")
+if _env_cli:
+    CLI_BINARY = Path(_env_cli)
+else:
+    CLI_BINARY = None
+    for _candidate in _CLI_CANDIDATES:
+        if _candidate.exists():
+            CLI_BINARY = _candidate
+            break
+    if CLI_BINARY is None:
+        CLI_BINARY = _CLI_CANDIDATES[0]  # default for error messages
 
 mcp = FastMCP(
     "dsview",
